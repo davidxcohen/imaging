@@ -31,22 +31,25 @@ class Photonic:
 		except KeyError as err:
 			print('\033[91m'+'&&&&&&&&&&&&&&&&&&&&&&&&&&&&&')
 			print('Photonic::KeyError::Configutation \033[106m{}\033[0m\033[91m is mismatch key:\033[106m{}'.format(self.config, err)+ '\033[0m')
-			# raise
 			sys.exit(1)
-
 
 		self.wall_flux = self.wallFlux()
 		self.silicon_flux = self.siliconFlux(self.wall_flux)
 
-	def wallFlux(self, light=None, scene=None):
+	def wallFlux(self, light=None, scene=None, dist_vec=None):
 		if light is None:
 			light = self.light
 		if scene is None:
-			scene = self.scene			
+			scene = self.scene	
+		if dist_vec is None:
+			dist_m = scene.Distance_m
+		else:
+			dist_m = dist_vec
+
 		# print(' ## wallFlux ## \n', light.PeakPower_W,'\n =====  \n' )
 		# Flux on a wall (scene) during lighting time (pulse time)
 		# Flux due to point source attached to the sensor
-		return light.PeakPower_W * light.Transmission / (np.radians(light.Hfov_deg) * np.radians(light.Vfov_deg) * scene.Distance_m ** 2)  # [W/m^2]
+		return light.PeakPower_W * light.Transmission / (np.radians(light.Hfov_deg) * np.radians(light.Vfov_deg) * dist_m ** 2)  # [W/m^2]
 
 	def siliconFlux(self, wall_flux, lens=None, scene=None):
 		if lens is None:
@@ -72,6 +75,13 @@ class Photonic:
 		pe_per_burst = pe_per_sec * op.InBurstDutyCycle * op.BurstTime_s
 		return pe_per_burst
 
+	def siliconFlux2(self, light=None, scene=None, lens=None, dist_vec=None):
+		return self.siliconFlux(wall_flux=self.wallFlux(dist_vec=dist_vec))
+
+	def photoelectron2(self, light=None, scene=None, lens=None, sensor=None, op=None, dist_vec=None):
+		return self.photoelectron(siliconFlux=self.siliconFlux(wall_flux=self.wallFlux(dist_vec=dist_vec)))
+
+
 if __name__ == '__main__':
 	config = pd.read_excel('../data/photonic_simul_data.xlsx',sheet_name='Config',header=1,index_col='Name').loc['Cfg1']
 	print(' ## main ## \n', config, '\n =====  \n')
@@ -96,6 +106,10 @@ if __name__ == '__main__':
 	for index, val in photonic.op.iteritems():
 		print('op.',index, val)
 
+	print('------\nwallFlux @ dist_vec    '+' '.join('{}: {:6.3f} '.format(*k) for k in enumerate(photonic.wallFlux(dist_vec=np.array([1, 2, 3])))), 'W/m**2')
+	print('siliconFlux @ dist_vec '+' '.join('{}: {:6.4f} '.format(*k) for k in enumerate(photonic.siliconFlux2(dist_vec=np.array([1, 2, 3])))), 'W/m**2')
+	print('PE @ dist_vec          '+' '.join('{}: {:6.1f} '.format(*k) for k in enumerate(photonic.photoelectron2(dist_vec=np.array([1, 2, 3])))), 'e-')
+
 	# photonic = Photonic(config='Cfg2')	
 	# call function wallFlux
 	print('=====\nWall flux = {:2.3} W/m**2\nSilicon flux = {:2.3}  W/m**2\nPhotoelectron = {:5.5} photonelectron/burst\n======'.format(
@@ -108,3 +122,6 @@ if __name__ == '__main__':
 		photonic.wallFlux(), 
 	    photonic.siliconFlux(wall_flux=photonic.wallFlux()),
 	    photonic.photoelectron(siliconFlux=photonic.siliconFlux(wall_flux=photonic.wallFlux())))) #,'\n',photonic.photoelectron())	
+
+	
+
