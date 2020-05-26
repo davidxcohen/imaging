@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import sys
 
 class Photonic:
 	def __init__(self, config=None):
@@ -18,13 +19,21 @@ class Photonic:
 		self.op_ = pd.read_excel('../data/photonic_simul_data.xlsx',sheet_name='Op',header=1,index_col='Name')
 		self.config_ = pd.read_excel('../data/photonic_simul_data.xlsx',sheet_name='Config',header=1,index_col='Name')
 
-		# Reduce parameters level to those appear in the config, only.
-		# print(' ## Photonic ## \n', config_.loc[self.cfg],'\n =====  \n' )
-		self.light = self.light_.loc[self.config_.loc[self.config , 'Light']]
-		self.scene = self.scene_.loc[self.config_.loc[self.config , 'Scene']]
-		self.lens = self.lens_.loc[self.config_.loc[self.config , 'Lens']]
-		self.sensor = self.sensor_.loc[self.config_.loc[self.config , 'Sensor']]
-		self.op = self.op_.loc[self.config_.loc[self.config , 'Op']]
+		# check Excel data validity
+		try:			
+			# Reduce parameters level to those appear in the config, only.
+			# print(' ## Photonic ## \n', config_.loc[self.cfg],'\n =====  \n' )
+			self.light = self.light_.loc[self.config_.loc[self.config , 'Light']]
+			self.scene = self.scene_.loc[self.config_.loc[self.config , 'Scene']]
+			self.lens = self.lens_.loc[self.config_.loc[self.config , 'Lens']]
+			self.sensor = self.sensor_.loc[self.config_.loc[self.config , 'Sensor']]
+			self.op = self.op_.loc[self.config_.loc[self.config , 'Op']]
+		except KeyError as err:
+			print('\033[91m'+'&&&&&&&&&&&&&&&&&&&&&&&&&&&&&')
+			print('Photonic::KeyError::Configutation \033[106m{}\033[0m\033[91m is mismatch key:\033[106m{}'.format(self.config, err)+ '\033[0m')
+			# raise
+			sys.exit(1)
+
 
 		self.wall_flux = self.wallFlux()
 		self.silicon_flux = self.siliconFlux(self.wall_flux)
@@ -87,8 +96,15 @@ if __name__ == '__main__':
 	for index, val in photonic.op.iteritems():
 		print('op.',index, val)
 
+	# photonic = Photonic(config='Cfg2')	
 	# call function wallFlux
 	print('=====\nWall flux = {:2.3} W/m**2\nSilicon flux = {:2.3}  W/m**2\nPhotoelectron = {:5.5} photonelectron/burst\n======'.format(
 		photonic.wallFlux(), 
 	    photonic.siliconFlux(wall_flux=photonic.wallFlux()),
 	    photonic.photoelectron(siliconFlux=photonic.siliconFlux(wall_flux=photonic.wallFlux())))) #,'\n',photonic.photoelectron())
+
+	photonic = Photonic(config='Cfg2')
+	print('=====\nWall flux = {:2.3} W/m**2\nSilicon flux = {:2.3}  W/m**2\nPhotoelectron = {:5.5} photonelectron/burst\n======'.format(
+		photonic.wallFlux(), 
+	    photonic.siliconFlux(wall_flux=photonic.wallFlux()),
+	    photonic.photoelectron(siliconFlux=photonic.siliconFlux(wall_flux=photonic.wallFlux())))) #,'\n',photonic.photoelectron())	
