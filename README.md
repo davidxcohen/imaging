@@ -1,6 +1,10 @@
 # imaging
 
 ## Simulation tool for for an imaging system with an active illumination
+**Calulation steps**:
+* Calculate the flux from the light source on a wall.
+* Calculate the flux from the light source on the image sensor silicon focal plane.
+* Calculate PhotoElectrons collect by the pixel on a single frame.
 ### TODO:
 - [x] Photonic Class working for CW light
 - [x] SandBox for testing
