@@ -11,9 +11,10 @@
 - [ ] Photonic Class work on pulsed light
 
 ## Required Installations (Tested with Python 3.7.5 on virtual env):
-> Photonic Class
+> Basic
 ```
-pip install numpy pandas scipy pint
+pip install numpy pandas scipy pint matplotlib 
+# refresh matplotlib to newer version for widgets
 ```
 > Sand Box works best on *Jupyter Lab*
 ```
