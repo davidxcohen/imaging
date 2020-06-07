@@ -71,8 +71,8 @@ class Photonic:
 			
 		energy_to_pe = self.hc / (light.WaveLength_nm * self.nm) # Conversion from energy [J] to number of photons
 		# PE on silicon from the scene during lighting time (pulse time)
-		pe_per_sec = siliconFlux * (sensor.PixelSize_m ** 2) * sensor.QE * sensor.FF / energy_to_pe  # [photons / sec] 
-		pe_per_burst = pe_per_sec * op.InBurstDutyCycle * op.BurstTime_s
+		pe_per_sec = siliconFlux * (sensor.PixelSize_m ** 2) * sensor.QE * sensor.FF / energy_to_pe  # [photoelectrons / sec] 
+		pe_per_burst = pe_per_sec * op.InBurstDutyCycle * op.BurstTime_s  # [photoelectrons in burst]
 		return pe_per_burst
 
 	def siliconFlux2(self, light=None, scene=None, lens=None, dist_vec=None):
