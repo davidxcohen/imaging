@@ -81,6 +81,10 @@ class Photonic:
 	def photoelectron2(self, light=None, scene=None, lens=None, sensor=None, op=None, dist_vec=None):
 		return self.photoelectron(siliconFlux=self.siliconFlux(wall_flux=self.wallFlux(dist_vec=dist_vec)))
 
+class Spectra:
+	def __init__():
+		a = 1
+
 
 if __name__ == '__main__':
 	config = pd.read_excel('../data/photonic_simul_data.xlsx',sheet_name='Config',header=1,index_col='Name').loc['Cfg1']
