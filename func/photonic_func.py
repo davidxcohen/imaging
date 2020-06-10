@@ -1,23 +1,26 @@
 import numpy as np
 import pandas as pd
 import sys
+from scipy import signal
+
+nm = 1e-9
+c = 2.99792458e8  # [m/s] Speed of light
+hc = 1.987820871E-025  # [J * m / photon] Energy of photon with wavelength m
 
 class Photonic:
 	def __init__(self, config=None):
-		self.c = 2.99792458e8  # [m/s] Speed of light
-		self.hc = 1.987820871E-025  # [J * m / photon] Energy of photon with wavelength m
-		self.nm = 1e-9
 		self.config = config
 		if config is None:
 			self.config = 'Cfg1'
 
-		# Read excel table 
-		self.light_ = pd.read_excel('../data/photonic_simul_data.xlsx',sheet_name='Light',header=1,index_col='Name')
-		self.sensor_ = pd.read_excel('../data/photonic_simul_data.xlsx',sheet_name='Sensor',header=1,index_col='Name')
-		self.scene_ = pd.read_excel('../data/photonic_simul_data.xlsx',sheet_name='Scene',header=1,index_col='Name')
-		self.lens_ = pd.read_excel('../data/photonic_simul_data.xlsx',sheet_name='Lens',header=1,index_col='Name')
-		self.op_ = pd.read_excel('../data/photonic_simul_data.xlsx',sheet_name='Op',header=1,index_col='Name')
-		self.config_ = pd.read_excel('../data/photonic_simul_data.xlsx',sheet_name='Config',header=1,index_col='Name')
+		# Read excel table having the following sheets: 'Light', 'Sensor', 'Scene', 'Lens', 'Op', 'Config'
+		data_file = '../data/photonic_simul_data.xlsx'
+		self.light_ = pd.read_excel(data_file,sheet_name='Light',header=1,index_col='Name')
+		self.sensor_ = pd.read_excel(data_file,sheet_name='Sensor',header=1,index_col='Name')
+		self.scene_ = pd.read_excel(data_file,sheet_name='Scene',header=1,index_col='Name')
+		self.lens_ = pd.read_excel(data_file,sheet_name='Lens',header=1,index_col='Name')
+		self.op_ = pd.read_excel(data_file,sheet_name='Op',header=1,index_col='Name')
+		self.config_ = pd.read_excel(data_file,sheet_name='Config',header=1,index_col='Name')
 
 		# check Excel data validity
 		try:			
@@ -69,7 +72,7 @@ class Photonic:
 		if op is None:
 			op = self.op
 			
-		energy_to_pe = self.hc / (light.WaveLength_nm * self.nm) # Conversion from energy [J] to number of photons
+		energy_to_pe = hc / (light.WaveLength_nm * nm) # Conversion from energy [J] to number of photons
 		# PE on silicon from the scene during lighting time (pulse time)
 		pe_per_sec = siliconFlux * (sensor.PixelSize_m ** 2) * sensor.QE * sensor.FF / energy_to_pe  # [photoelectrons / sec] 
 		pe_per_burst = pe_per_sec * op.InBurstDutyCycle * op.BurstTime_s  # [photoelectrons in burst]
@@ -80,6 +83,61 @@ class Photonic:
 
 	def photoelectron2(self, light=None, scene=None, lens=None, sensor=None, op=None, dist_vec=None):
 		return self.photoelectron(siliconFlux=self.siliconFlux(wall_flux=self.wallFlux(dist_vec=dist_vec)))
+
+	def generate_pulse(self, delay=None, rise=None, fall=None, width=None, time_interval=None, smooth=False, mode='charge_discharge'):
+		'''Create a light pulse (similar to a capacitor charge/discharge)
+			rise - Pulse rise time [sec]
+			fall - Pulse fall time [sec]
+		    width - Pulse width time [sec]
+		    time_interval - Sample time_interval [sec]
+		'''
+		self.time_interval = time_interval
+		if time_interval is None:
+			self.time_interval = 0.1e-9 # [sec]
+		if delay is None:
+			delay = 0.
+
+		zeros_len = np.uint(10. + delay / self.time_interval)
+
+		if mode == 'charge_discharge':
+			x_rise = np.arange(0, width, self.time_interval)
+			x_fall = np.arange(0, fall * 10, fall) # Discharge takes longer to become zero
+			y_up = (1 - np.exp(-x_rise / rise))
+			y_max = y_up.max()
+			y_inf = (1 - np.exp(-(10. *rise) / rise)) # =1 @ infinity
+			y_up = y_up / y_up.max()
+			y_down = np.exp(-x_fall / fall)
+			y_down = y_down / y_down.max()
+			y_zeros = np.zeros(zeros_len)
+		y = np.concatenate((y_zeros, y_up, y_down))
+
+		# Smooth curves
+		if smooth:
+			f = signal.hamming(15)
+			y = np.convolve(f, y, mode='same')
+			y = y / y.max()
+		y = y * y_max / y_inf
+
+		# Clip negative 
+		y[y < 0] = 0
+
+		# Create time vector
+		t = np.linspace(0, len(y) * self.time_interval, len(y))
+		self.pulse_y = y
+		self.pulse_t = t
+		return y, t
+
+
+	def conv_light_shutter(self, t_light=None, y_light=None, t_shutter=None, y_shutter=None, time_interval=None, ):
+		self.time_interval = time_interval
+		if time_interval is None:
+			self.time_interval = 0.1e-9 # [sec]
+
+		y = np.convolve(y_light, y_shutter, mode='full')
+		y = y / y_light.sum() # Normalize convolution to the integrated light: y=1 if the entire illumination pulse is within the shutter
+		t = np.linspace(0, len(y) * self.time_interval, len(y))
+		return y, t
+
 
 class Spectra:
 	def __init__():
@@ -121,11 +179,31 @@ if __name__ == '__main__':
 	    photonic.siliconFlux(wall_flux=photonic.wallFlux()),
 	    photonic.photoelectron(siliconFlux=photonic.siliconFlux(wall_flux=photonic.wallFlux())))) #,'\n',photonic.photoelectron())
 
-	photonic = Photonic(config='Cfg2')
+	photonic = Photonic(config='Cfg3')
 	print('=====\nWall flux = {:2.3} W/m**2\nSilicon flux = {:2.3}  W/m**2\nPhotoelectron = {:5.5} photonelectron/burst\n======'.format(
 		photonic.wallFlux(), 
 	    photonic.siliconFlux(wall_flux=photonic.wallFlux()),
 	    photonic.photoelectron(siliconFlux=photonic.siliconFlux(wall_flux=photonic.wallFlux())))) #,'\n',photonic.photoelectron())	
 
+	rise = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'light_rise_sec']
+	fall = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'light_fall_sec']
+	width = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'light_width_sec']
+	y1, t1 = photonic.generate_pulse(rise=rise, fall=fall, width=width, smooth=True)
+
+
+	rise = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_rise_sec']
+	fall = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_fall_sec']
+	width = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_width_sec']
+	delay = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_delay_sec']
+	delay = 14e-9
+	y2, t2 = photonic.generate_pulse(delay=delay, rise=rise, fall=fall, width=width, smooth=True)
+
+	y3, t3 = photonic.conv_light_shutter(t_light=t1, y_light=y1, t_shutter=t2, y_shutter=y2)
+
+	import matplotlib.pyplot as plt
+	plt.plot(t1,y1)
+	plt.plot(t2,y2)
+	plt.plot(t3, y3)
+	plt.show()
 	
 
