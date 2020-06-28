@@ -6,6 +6,28 @@ from scipy import signal
 nm = 1e-9
 c = 2.99792458e8  # [m/s] Speed of light
 hc = 1.987820871E-025  # [J * m / photon] Energy of photon with wavelength m
+efficacy = 683 # [lumen/watt @ 550nm]
+
+def PlankLawBlackBodyRad(T, wavelength):
+  # Calculates black body radiation according Plank Law. T is the black body
+  # temperatue in Kelvin.  Wavelength in Meter. B is the
+  # Radiance in [W/sr/m^3]. W is the Spectral radiance in [W/sr/m^2/nm],
+  # meaning, the power emitted per unit area of the body, per unit solid
+  # angle that the radiation is measured over, per nm of wavelength.
+  # 
+  # By David Cohen 2009
+  # modified to function by DC 14-Jan-2015
+  # python - DC 28-Aug-2019
+
+  # Usage:
+  # nm      = 1e-9;
+  # wavelength  = 850*nm;
+  # T = 3200 [K]
+  # W       = PlankLawBlackBodyRad(T, wavelength)
+
+  B   = 2 * h * c**2 /  wavelength**5 /(np.exp(hc/(wavelength * k_b * T)) - 1) # [W/sr/m^3] Radiance
+  # http://en.wikipedia.org/wiki/Planck%27s_law
+  return B * 1e-9 # [W/sr/m^2/nm] Spectral Radiance
 
 class Photonic:
 	def __init__(self, config=None):
@@ -39,7 +61,7 @@ class Photonic:
 		self.wall_flux = self.wallFlux()
 		self.silicon_flux = self.siliconFlux(self.wall_flux)
 
-	def wallFlux(self, light=None, scene=None, dist_vec=None):
+	def wallFlux(self, light=None, scene=None, dist_vec=None, light_type='ir_pulse'):
 		if light is None:
 			light = self.light
 		if scene is None:
