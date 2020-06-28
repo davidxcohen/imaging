@@ -58,5 +58,33 @@ if __name__ == '__main__':
 	ax[1, 1].grid(True, color='blue')
 	ax[1, 1].legend(fontsize=8)	
 	
-	plt.show()
+	# plt.show()
+
+	from plotly.offline import iplot
+	import plotly.graph_objs as go
+	# Plotly version 4.0.0 (pip install plotly==4.0.0)
+
+	trace0 = go.Scatter(x=I,
+	                    y=V, mode='lines+markers',  # Select 'lines', 'markers' or 'lines+markers'
+	                    name='Forward Voltage [V]')
+	trace1 = go.Scatter(x=I,
+	                    y=1000 * P, mode='lines+markers',
+	                    name='Optical Radiant Power [mW]')
+	trace2 = go.Scatter(x=I,
+	                    y=100 * efficiency, mode='lines+markers',
+	                    name='Wall Plug Efficiency [%]')
+	trace3 = go.Scatter(x=I,
+	                    y=1000 * heat, mode='lines+markers',
+	                    name='Heat Dissipatiom [mW]')
+	data = [trace0, trace1, trace2, trace3]
+
+	layout = {'title': 'Light Component Efficiency Analysis: '+light_type,
+	          'xaxis': {'title': 'Forward Current [A]',
+	                    'type': 'linear'},  # Select 'log' or 'linear'
+	          'yaxis': {'title': '____',
+	                    'type': 'log'},  # Select 'log' or 'linear'
+	          'template': 'plotly_dark',
+	          'hovermode': 'x'}
+
+	iplot({'data': data, 'layout': layout})
 
