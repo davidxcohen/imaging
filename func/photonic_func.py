@@ -7,6 +7,12 @@ nm = 1e-9
 c = 2.99792458e8  # [m/s] Speed of light
 hc = 1.987820871E-025  # [J * m / photon] Energy of photon with wavelength m
 efficacy = 683 # [lumen/watt @ 550nm]
+k_b = 1.3806488e-23 # [J/K] boltzman constant
+h   = 6.62606957e-34 # [J*sec] Plank constant
+nm = 1e-9 # [m]
+cm = 1e-2 # [m]
+e_minus =1.60217662e-19  # [Culomb]
+
 
 def PlankLawBlackBodyRad(T, wavelength):
   # Calculates black body radiation according Plank Law. T is the black body
@@ -150,7 +156,7 @@ class Photonic:
 		return y, t
 
 
-	def conv_light_shutter(self, t_light=None, y_light=None, t_shutter=None, y_shutter=None, time_interval=None, ):
+	def conv_light_shutter(self, t_light=None, y_light=None, t_shutter=None, y_shutter=None, time_interval=None):
 		self.time_interval = time_interval
 		if time_interval is None:
 			self.time_interval = 0.1e-9 # [sec]
@@ -159,6 +165,16 @@ class Photonic:
 		y = y / y_light.sum() # Normalize convolution to the integrated light: y=1 if the entire illumination pulse is within the shutter
 		t = np.linspace(0, len(y) * self.time_interval, len(y))
 		return y, t
+
+
+	def qe_by_responsivity(self, silicon_responsivity_a_w, pixel_fill_factor, wavelength_m):
+		''' 
+		Silicon responsivity [A/W]
+		fill factor [ratio]
+		wavelength [m]
+		[A]/[W]*[J * m / photon]/[m]/[C] ==> [1]
+		'''
+		return pixel_fill_factor * silicon_responsivity_a_w * hc / (wavelength_m * e_minus) # [ratio] ff*QE  
 
 
 class Spectra:
@@ -202,6 +218,10 @@ if __name__ == '__main__':
 	    photonic.photoelectron(siliconFlux=photonic.siliconFlux(wall_flux=photonic.wallFlux())))) #,'\n',photonic.photoelectron())
 
 	photonic = Photonic(config='Cfg3')
+
+	tmp = photonic.qe_by_responsivity(silicon_responsivity_a_w=0.002, pixel_fill_factor=1., wavelength_m=1550.*nm)
+	print('####%7.7f'%tmp+'#####')
+
 	print('=====\nWall flux = {:2.3} W/m**2\nSilicon flux = {:2.3}  W/m**2\nPhotoelectron = {:5.5} photonelectron/burst\n======'.format(
 		photonic.wallFlux(), 
 	    photonic.siliconFlux(wall_flux=photonic.wallFlux()),
@@ -227,5 +247,7 @@ if __name__ == '__main__':
 	plt.plot(t2,y2)
 	plt.plot(t3, y3)
 	plt.show()
+
+	
 	
 

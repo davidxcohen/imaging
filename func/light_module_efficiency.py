@@ -22,7 +22,7 @@ if __name__ == '__main__':
 	# Example source data from:
 	# https://www.hamamatsu.com/resources/pdf/ssd/l12509_series_kled1071e.pdf
 	# P/N = L12509-0155K 
-	light_type = 'Hamamatsu 1550nm L12509-0155K'
+	light_type = 'Hamamatsu LED 1550nm L12509-0155K'
 	I = np.array([10,  20,   50,   100, 200,  500]) * 1e-3 # [A]
 	V = np.array([0.7, 0.73, 0.78, 0.9, 1.07, 1.4]) # [V]
 	P = np.array([0.5, 0.9,  1.9,  3.2, 5.5,  8.2]) * 1e-3 # [W]
@@ -81,7 +81,7 @@ if __name__ == '__main__':
 	layout = {'title': 'Light Component Efficiency Analysis: '+light_type,
 	          'xaxis': {'title': 'Forward Current [A]',
 	                    'type': 'linear'},  # Select 'log' or 'linear'
-	          'yaxis': {'title': '____',
+	          'yaxis': {'title': '__',
 	                    'type': 'log'},  # Select 'log' or 'linear'
 	          'template': 'plotly_dark',
 	          'hovermode': 'x'}
