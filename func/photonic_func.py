@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import sys
+import sys, os
 from scipy import signal
 
 nm = 1e-9
@@ -37,12 +37,13 @@ def PlankLawBlackBodyRad(T, wavelength):
 
 class Photonic:
 	def __init__(self, config=None):
+		CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 		self.config = config
 		if config is None:
 			self.config = 'Cfg1'
 
 		# Read excel table having the following sheets: 'Light', 'Sensor', 'Scene', 'Lens', 'Op', 'Config'
-		data_file = '../data/photonic_simul_data.xlsx'
+		data_file = CURRENT_DIR+'/../data/photonic_simul_data.xlsx'
 		self.light_ = pd.read_excel(data_file,sheet_name='Light',header=1,index_col='Name')
 		self.sensor_ = pd.read_excel(data_file,sheet_name='Sensor',header=1,index_col='Name')
 		self.scene_ = pd.read_excel(data_file,sheet_name='Scene',header=1,index_col='Name')
@@ -174,7 +175,7 @@ class Photonic:
 		wavelength [m]
 		[A]/[W]*[J * m / photon]/[m]/[C] ==> [1]
 		'''
-		return pixel_fill_factor * silicon_responsivity_a_w * hc / (wavelength_m * e_minus) # [ratio] ff*QE  
+		return pixel_fill_factor * silicon_responsivity_a_w * hc / (wavelength_m * e_minus) # [ratio] 
 
 
 class Spectra:
@@ -183,7 +184,10 @@ class Spectra:
 
 
 if __name__ == '__main__':
-	config = pd.read_excel('../data/photonic_simul_data.xlsx',sheet_name='Config',header=1,index_col='Name').loc['Cfg1']
+	import os
+	CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+	config = pd.read_excel(CURRENT_DIR+'/../data/photonic_simul_data.xlsx',sheet_name='Config',header=1,index_col='Name').loc['Cfg1']
 	print(' ## main ## \n', config, '\n =====  \n')
 
 
