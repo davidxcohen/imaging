@@ -1,0 +1,12 @@
+*checkpoint.ipynb
+*cpython-37.pyc
+
+*.sublime-workspace
+.vscode/.ropeproject/objectdb
+.DS_Store
+*.sublime-project
+examples/untitled.html
+*.code-workspace
+.vscode/launch.json
+.vscode/settings.json
+.vscode/.ropeproject/config.py
