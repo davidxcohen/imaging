@@ -70,7 +70,7 @@ class Photonic:
 		self.wall_flux = self.wallFlux()
 		self.silicon_flux = self.siliconFlux(self.wall_flux)
 
-	def solarSpectrum_W_m2_nm(self):
+	def solarSpectrum_W_m2_um(self):
 		# NASA technical Memorandum1980
 		# https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19810016493.pdf
 		solar_spectrum_radiation_distribution = \
@@ -98,11 +98,7 @@ class Photonic:
 		solar_spectrum_radiation_distribution = np.reshape(solar_spectrum_radiation_distribution,[len(solar_spectrum_radiation_distribution)//2,2])    
 		f = interpolate.interp1d(solar_spectrum_radiation_distribution.T[0], solar_spectrum_radiation_distribution.T[1])
 		wavelength_um = np.arange(np.min(solar_spectrum_radiation_distribution.T[0]), np.max(solar_spectrum_radiation_distribution.T[0]), 0.001)
-		# low_wl = 0.8
-		# high_wl = 2.0
-		spectrum = f(wavelength_um) # interpolation resulting spectrum
-		# wl_vec_um = np.all([[wavelength <=high_wl ], [wavelength >=low_wl ]], axis=0)
-		# print(wl_vec_um)
+		spectrum = f(wavelength_um) # interpolation resulting spectrum with scipy.interpolate
 		return spectrum, wavelength_um
 
 	def light_heat_dissipation(self, light=None):
@@ -130,17 +126,20 @@ class Photonic:
 			flux = light.PeakPower_W * light.Transmission * light.Number_units / \
 				(np.radians(light.Hfov_deg) * np.radians(light.Vfov_deg) * dist_m ** 2)  # [W/m^2]
 		if light_type == 'solar':
-			y, x = self.solarSpectrum_W_m2_nm()
+			y, x = self.solarSpectrum_W_m2_um()
+			### TODO: Consider replace interpolation by Numpy.Interp
 			f = interpolate.interp1d(x, y)
 			amb = scene.AmbientLight_lux / maximum_amb_light_lux
 			if len(dist_m.shape):
-				solar_flux_W_m2_nm = amb * f([light.WaveLength_nm / 1000])# solar flux input in [um]
-				solar_flux_W_m2_nm_vec = np.array(dist_m.shape[0] * list(solar_flux_W_m2_nm))
+				### TODO: This required due to bug in the scipy.interpolation
+				solar_flux_W_m2_um = amb * f([light.WaveLength_nm / 1000])# solar flux input in [um]
+				solar_flux_W_m2_nm_vec = np.array(dist_m.shape[0] * list(solar_flux_W_m2_um)) \
+					* lens.BP_filter_width_nm * 0.001 # [W/m^2/um][nm][nm/um] ==> [W/m^2] 
 			else:
-				solar_flux_W_m2_nm = amb * f(light.WaveLength_nm / 1000) # solar flux input in [um]
-				solar_flux_W_m2_nm_vec = solar_flux_W_m2_nm
+				solar_flux_W_m2_um = amb * f(light.WaveLength_nm / 1000) # solar flux input in [um]
+				solar_flux_W_m2_nm_vec = solar_flux_W_m2_um * lens.BP_filter_width_nm * 0.001 # [W/m^2/um][nm][nm/um] ==> [W/m^2] 
 
-			flux = solar_flux_W_m2_nm_vec * lens.BP_filter_width_nm # [W/m^2]
+			flux = solar_flux_W_m2_nm_vec 
 		return flux
 
 	def siliconFlux(self, wall_flux, lens=None, scene=None):
@@ -178,7 +177,8 @@ class Photonic:
 	def photoelectron2(self, light=None, scene=None, lens=None, sensor=None, op=None, dist_vec=None):
 		return self.photoelectron(siliconFlux=self.siliconFlux(wall_flux=self.wallFlux(dist_vec=dist_vec)))
 
-	def noise_electron(self, sensor=None, op=None):
+	def signal_to_noise_ratio(self, sensor=None, op=None, dist_vec=None):
+		T_kelvin = 300
 		if sensor is None:
 			sensor = self.sensor
 		if op is None:
@@ -186,13 +186,27 @@ class Photonic:
 
 		### TODO: Find appropriate integration time foe dark signal
 		integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s
-		dark_noise_e = sensor.DarkSignal_e_s * integration_time_sec
-		readout_noise_e = sensor.ReadoutNoise_e
-		return dark_noise_e + readout_noise_e
 
-	def kTC_noise_e(self, C_farad):
-		return 1/e_minus * np.sqrt(k_b * T_kelvin * C_farad) # 1/[coul]*sqrt([V][A][Sec][A][Sec]/[V]) == [1] 
-
+		signal = dict(
+			ir_pulse=self.photoelectron2(self, dist_vec=dist_vec),
+			solar=self.photoelectron(
+				siliconFlux=self.siliconFlux(
+				wall_flux=self.wallFlux(dist_vec=dist_vec,light_type='solar'))))
+		# print(signal)
+		noise = dict(
+			noise_photon_shot = (signal['ir_pulse'] + signal['solar']) ** 0.5,
+			dark_noise = (self.sensor.DarkSignal_e_s * integration_time_sec)**0.5,
+			readout_noise = self.sensor.ReadoutNoise_e,
+			kTC_noise = 1/e_minus * np.sqrt(k_b * T_kelvin * self.sensor.Cfd_farad) if not self.sensor.CDS else 0.0, 
+						# 1/[coul]*sqrt([V][A][Sec][A][Sec]/[V]) == [1] 
+			quantization_noise = 0.0) ### TODO: quantizatio noise definition
+		SNR = signal['ir_pulse'] / (np.sqrt(
+			noise['noise_photon_shot']**2 + 
+			noise['dark_noise']**2 + 
+			noise['readout_noise']**2 + 
+			noise['kTC_noise']**2 + 
+			noise['quantization_noise']**2))
+		return signal, noise, SNR
 
 	def generate_pulse(self, delay=None, rise=None, fall=None, width=None, time_interval=None, smooth=False, mode='charge_discharge'):
 		'''
@@ -343,9 +357,16 @@ if __name__ == '__main__':
 	y2, t2 = photonic.generate_pulse(delay=delay, rise=rise, fall=fall, width=width, smooth=True)
 
 	y3, t3 = photonic.conv_light_shutter(t_light=t1, y_light=y1, t_shutter=t2, y_shutter=y2)
+	
+	photonic = Photonic(config='fake_tof_day_1375')
+	print(f'Solar= {photonic.wallFlux(light_type="solar", dist_vec=np.array([1,2]))}')
 
-	print(f'Solar: {photonic.wallFlux(light_type="solar", dist_vec=np.array([1,2]))}')
+	signal, noise, SNR = photonic.signal_to_noise_ratio(dist_vec=np.array([1,2]))
+	print('====signal_to_noise_ratio ====\nSignal=', signal)
+	print('Noise=', noise)
+	print('SNR=', SNR)
 
+	
 	import matplotlib.pyplot as plt
 	plt.plot(t1,y1)
 	plt.plot(t2,y2)
