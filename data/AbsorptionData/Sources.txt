@@ -1,0 +1,6 @@
+Source where GE, Si absorption was digitized 
+https://www.researchgate.net/figure/Absorption-coefficient-of-Si-and-Ge_fig2_237639689
+
+by digitizing web app
+https://apps.automeris.io/wpd/
+
