@@ -4,6 +4,7 @@ import sys, os
 from scipy import signal, interpolate
 
 nm = 1e-9
+um = 1e-6
 c = 2.99792458e8  # [m/s] Speed of light
 hc = 1.987820871E-025  # [J * m / photon] Energy of photon with wavelength m
 efficacy = 683 # [lumen/watt @ 550nm]
@@ -39,10 +40,20 @@ def PlankLawBlackBodyRad(T, wavelength):
 
 class Photonic:
 	def __init__(self, config=None):
-		CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 		self.config = config
 		if config is None:
 			self.config = 'Cfg1'
+		
+		CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+		data_file = CURRENT_DIR+'/../data/SolarRadiationSpectrum/solar_spectrum_radiation_distribution.csv'
+		tmp = np.genfromtxt(data_file, delimiter=',')
+		self.solar_spectrum_radiation_distribution = np.vstack(tmp[1:])
+
+		self.Absorption_Coefficient = dict()
+		for sc in ['Si', 'Ge']:
+			data_file = CURRENT_DIR+'/../data/AbsorptionData/'+sc+'_Absorption_Coefficient_cm-1.csv'
+			tmp = np.genfromtxt(data_file, delimiter=',')
+			self.Absorption_Coefficient[sc] = np.vstack(tmp[1:])
 
 		# Read excel table having the following sheets: 'Light', 'Sensor', 'Scene', 'Lens', 'Op', 'Config'
 		data_file = CURRENT_DIR+'/../data/photonic_simul_data.xlsx'
@@ -70,7 +81,46 @@ class Photonic:
 		self.wall_flux = self.wallFlux()
 		self.silicon_flux = self.siliconFlux(self.wall_flux)
 
+	def qe_by_responsivity(self, silicon_responsivity_a_w, pixel_fill_factor, wavelength_m):
+		''' 
+		Silicon responsivity [A/W]
+		fill factor [ratio]
+		wavelength [m]
+		[A]/[W]*[J * m / photon]/[m]/[C] ==> [1]
+		'''
+		return pixel_fill_factor * silicon_responsivity_a_w * hc / (wavelength_m * e_minus) # [ratio] 
+
+	def qe_by_absorption(self, silicon_absorption_cm, epi_thickness_um):
+		''' 
+		Semiconductor absorption [1/CM] 
+			> cChanges with wavelength Si 2000@940nm, 500@850nm, Ge: 6770@1375nm, 2442@1550nm
+		fill factor [ratio]
+		Epitaxial layer thickness [m]
+		[1/cm]*[cm/m]*[m] ==> [1]
+		'''
+		epi_thickness_m = epi_thickness_um * um
+		cm_m = 100 # [m/cm]
+		return (1.0 - np.exp(-silicon_absorption_cm * cm_m * epi_thickness_m)) # [ratio] 
+
+	def quantum_efficiency(self, semiconductor='Si', wavelength_nm=850, epi_thickness_um=10):
+		f = interpolate.interp1d(self.Absorption_Coefficient[semiconductor].T[0], 
+		                         self.Absorption_Coefficient[semiconductor].T[1])
+		silicon_absorption_cm = f(wavelength_nm) # interpolation resulting spectrum with scipy.interpolate
+		QE = self.qe_by_absorption(silicon_absorption_cm, epi_thickness_um)
+		return QE
+
 	def solarSpectrum_W_m2_um(self):
+		# NASA technical Memorandum1980
+		# Solar Irradiance [W/m^2/µm]
+		# https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19810016493.pdf
+		f = interpolate.interp1d(self.solar_spectrum_radiation_distribution.T[0], 
+		                         self.solar_spectrum_radiation_distribution.T[1])
+		wavelength_um = np.arange(np.min(self.solar_spectrum_radiation_distribution.T[0]), 
+		                          np.max(self.solar_spectrum_radiation_distribution.T[0]), 0.001)
+		spectrum = f(wavelength_um) # interpolation resulting spectrum with scipy.interpolate
+		return spectrum, wavelength_um
+
+	def solarSpectrum_W_m2_um_(self):
 		# NASA technical Memorandum1980
 		# https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19810016493.pdf
 		solar_spectrum_radiation_distribution = \
@@ -97,6 +147,7 @@ class Photonic:
 			2.088, 75.11, 2.122, 75.46, 2.149, 70.65, 2.22, 71.37, 2.295, 72.13] # Solar Irradiance [W/m ** 2/µm]
 		solar_spectrum_radiation_distribution = np.reshape(solar_spectrum_radiation_distribution,[len(solar_spectrum_radiation_distribution)//2,2])    
 		f = interpolate.interp1d(solar_spectrum_radiation_distribution.T[0], solar_spectrum_radiation_distribution.T[1])
+		# np.savetxt('solar_spectrum_radiation_distribution.csv', solar_spectrum_radiation_distribution, delimiter=',')
 		wavelength_um = np.arange(np.min(solar_spectrum_radiation_distribution.T[0]), np.max(solar_spectrum_radiation_distribution.T[0]), 0.001)
 		spectrum = f(wavelength_um) # interpolation resulting spectrum with scipy.interpolate
 		return spectrum, wavelength_um
@@ -164,11 +215,17 @@ class Photonic:
 			integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s 
 		if light_type == 'solar':
 			### TODO: need to formulate integration time for solar
-			integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s  
-
+			integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s 
+		
+		QE = self.quantum_efficiency(semiconductor=sensor.Semiconductor,
+									 wavelength_nm=sensor.Wavelength,
+									 epi_thickness_um=sensor.epi_thick_um)
+		# print('>>>>>')
+		# print(sensor, '\nQE->', QE)
+		# print('<<<<<')
 		energy_to_pe = hc / (light.WaveLength_nm * nm) # Conversion from energy [J] to number of photons
 		# PE on silicon from the scene during lighting time (pulse time)
-		pe_per_sec = siliconFlux * (sensor.PixelSize_m ** 2) * sensor.QE * sensor.FF / energy_to_pe  # [photoelectrons / sec] 
+		pe_per_sec = siliconFlux * (sensor.PixelSize_m ** 2) * QE * sensor.FF / energy_to_pe  # [photoelectrons / sec] 
 		return pe_per_sec * integration_time_sec # [photoelectrons within integration time]
 
 	def siliconFlux2(self, light=None, scene=None, lens=None, dist_vec=None):
@@ -264,29 +321,9 @@ class Photonic:
 		return y, t
 
 
-	def qe_by_responsivity(self, silicon_responsivity_a_w, pixel_fill_factor, wavelength_m):
-		''' 
-		Silicon responsivity [A/W]
-		fill factor [ratio]
-		wavelength [m]
-		[A]/[W]*[J * m / photon]/[m]/[C] ==> [1]
-		'''
-		return pixel_fill_factor * silicon_responsivity_a_w * hc / (wavelength_m * e_minus) # [ratio] 
-
-	def qe_by_absorption(self, silicon_absorption_cm, pixel_fill_factor, epi_thickness_m):
-		''' 
-		Silicon absorption [1/CM] (changes with wavelength 2000@940nm, 500@850nm)
-		fill factor [ratio]
-		Epitaxial layer thickness [m]
-		[1/cm]*[cm/m]*[m] ==> [1]
-		'''
-		cm_m = 100 # [m/cm]
-		return pixel_fill_factor * (1.0 - np.exp(-silicon_absorption_cm * cm_m * epi_thickness_m)) # [ratio] 
 
 if __name__ == '__main__':
-	import os
 	CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-
 	config = pd.read_excel(CURRENT_DIR+'/../data/photonic_simul_data.xlsx',sheet_name='Config',header=1,index_col='Name').loc['Cfg1']
 	print(' ## main ## \n', config, '\n =====  \n')
 
@@ -327,15 +364,15 @@ if __name__ == '__main__':
 	print('####%7.7f'%tmp+'#####')
 
 	alpha = 500 # [1/cm] absorption coef @ 850nm
-	silicon_epi = 10e-6 # [m] 
-	tmp = photonic.qe_by_absorption(pixel_fill_factor=1, silicon_absorption_cm=alpha, epi_thickness_m=silicon_epi)
-	print(f'QE of {1e6*silicon_epi}um EPI thickness @850 nm is {100*tmp:2.0f}%')
+	silicon_epi = 1e-6 # [m] 
+	tmp = photonic.qe_by_absorption(silicon_absorption_cm=alpha, epi_thickness_um=silicon_epi)
+	print(f'QE of {silicon_epi}um EPI thickness @850 nm is {100*tmp:2.0f}%')
 	alpha = 200 # [1/cm] absorption coef @ 940nm
-	tmp = photonic.qe_by_absorption(pixel_fill_factor=1, silicon_absorption_cm=alpha, epi_thickness_m=silicon_epi)
-	print(f'QE of {1e6*silicon_epi}um EPI thickness @940 nm is {100*tmp:2.0f}%')	
+	tmp = photonic.qe_by_absorption(silicon_absorption_cm=alpha, epi_thickness_um=silicon_epi)
+	print(f'QE of {silicon_epi}um EPI thickness @940 nm is {100*tmp:2.0f}%')	
 	alpha = 10000 # [1/cm] absorption coef Ge @ 1350nm
 	silicon_epi = 3e-6 # [m] 
-	tmp = photonic.qe_by_absorption(pixel_fill_factor=1, silicon_absorption_cm=alpha, epi_thickness_m=silicon_epi)
+	tmp = photonic.qe_by_absorption(silicon_absorption_cm=alpha, epi_thickness_um=silicon_epi)
 	print(f'QE of {1e6*silicon_epi}um EPI thickness @1350 nm is {100*tmp:2.0f}%')
 
 	print('=====\nWall flux = {:2.3} W/m**2\nSilicon flux = {:2.3}  W/m**2\nPhotoelectron = {:5.5} photonelectron/burst\n======'.format(
