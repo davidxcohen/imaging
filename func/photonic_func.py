@@ -5,6 +5,7 @@ from scipy import signal, interpolate
 
 nm = 1e-9
 um = 1e-6
+fF = 1e-15
 c = 2.99792458e8  # [m/s] Speed of light
 hc = 1.987820871E-025  # [J * m / photon] Energy of photon with wavelength m
 efficacy = 683 # [lumen/watt @ 550nm]
@@ -12,7 +13,7 @@ k_b = 1.3806488e-23 # [J/K] boltzman constant
 h   = 6.62606957e-34 # [J*sec] Plank constant
 nm = 1e-9 # [m]
 cm = 1e-2 # [m]
-e_minus =1.60217662e-19  # [Culomb]
+e_minus =1.60217662e-19  # [Coulomb]
 T_kelvin = 300
 maximum_amb_light_lux = 120000 # [lux]
 
@@ -41,30 +42,36 @@ def PlankLawBlackBodyRad(T, wavelength):
 class Photonic:
 	def __init__(self, config=None):
 		self.config = config
-		if config is None:
+		#! Unclear why the following condition is required and not in function init
+		if config is None:  
 			self.config = 'Cfg1'
 		
 		CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-		data_file = CURRENT_DIR+'/../data/SolarRadiationSpectrum/solar_spectrum_radiation_distribution.csv'
-		tmp = np.genfromtxt(data_file, delimiter=',')
+		_data_file = CURRENT_DIR+'/../data/SolarRadiationSpectrum/solar_spectrum_radiation_distribution.csv'
+		tmp = np.genfromtxt(_data_file, delimiter=',')
 		self.solar_spectrum_radiation_distribution = np.vstack(tmp[1:])
 
 		self.Absorption_Coefficient = dict()
 		for sc in ['Si', 'Ge']:
-			data_file = CURRENT_DIR+'/../data/AbsorptionData/'+sc+'_Absorption_Coefficient_cm-1.csv'
-			tmp = np.genfromtxt(data_file, delimiter=',')
+			_data_file = CURRENT_DIR+'/../data/AbsorptionData/'+sc+'_Absorption_Coefficient_cm-1.csv'
+			tmp = np.genfromtxt(_data_file, delimiter=',')
 			self.Absorption_Coefficient[sc] = np.vstack(tmp[1:])
 
 		# Read excel table having the following sheets: 'Light', 'Sensor', 'Scene', 'Lens', 'Op', 'Config'
-		data_file = CURRENT_DIR+'/../data/photonic_simul_data.xlsx'
-		self.light_ = pd.read_excel(data_file,sheet_name='Light',header=1,index_col='Name')
-		self.sensor_ = pd.read_excel(data_file,sheet_name='Sensor',header=1,index_col='Name')
-		self.scene_ = pd.read_excel(data_file,sheet_name='Scene',header=1,index_col='Name')
-		self.lens_ = pd.read_excel(data_file,sheet_name='Lens',header=1,index_col='Name')
-		self.op_ = pd.read_excel(data_file,sheet_name='Op',header=1,index_col='Name')
-		self.config_ = pd.read_excel(data_file,sheet_name='Config',header=1,index_col='Name')
+		_data_file = CURRENT_DIR+'/../data/photonic_simul_data.xlsx'
+		self.light_ = pd.read_excel(_data_file,sheet_name='Light',header=1,index_col='Name')
+		self.sensor_ = pd.read_excel(_data_file,sheet_name='Sensor',header=1,index_col='Name')
+		self.scene_ = pd.read_excel(_data_file,sheet_name='Scene',header=1,index_col='Name')
+		self.lens_ = pd.read_excel(_data_file,sheet_name='Lens',header=1,index_col='Name')
+		self.op_ = pd.read_excel(_data_file,sheet_name='Op',header=1,index_col='Name')
+		self.config_ = pd.read_excel(_data_file,sheet_name='Config',header=1,index_col='Name')
 
-		# check Excel data validity
+		self.update_photonic()
+
+		self.wall_flux = self.wallFlux()
+		self.silicon_flux = self.siliconFlux(self.wall_flux)
+
+	def update_photonic(self):	
 		try:			
 			# Reduce parameters level to those appear in the config, only.
 			# print(' ## Photonic ## \n', config_.loc[self.cfg],'\n =====  \n' )
@@ -73,13 +80,10 @@ class Photonic:
 			self.lens = self.lens_.loc[self.config_.loc[self.config , 'Lens']]
 			self.sensor = self.sensor_.loc[self.config_.loc[self.config , 'Sensor']]
 			self.op = self.op_.loc[self.config_.loc[self.config , 'Op']]
-		except KeyError as err:
+		except KeyError as err: # check Excel data validity
 			print('\033[91m'+'&&&&&&&&&&&&&&&&&&&&&&&&&&&&&')
 			print('Photonic::KeyError::Configutation \033[106m{}\033[0m\033[91m is mismatch key:\033[106m{}'.format(self.config, err)+ '\033[0m')
 			sys.exit(1)
-
-		self.wall_flux = self.wallFlux()
-		self.silicon_flux = self.siliconFlux(self.wall_flux)
 
 	def qe_by_responsivity(self, silicon_responsivity_a_w, pixel_fill_factor, wavelength_m):
 		''' 
@@ -93,20 +97,20 @@ class Photonic:
 	def qe_by_absorption(self, silicon_absorption_cm, epi_thickness_um):
 		''' 
 		Semiconductor absorption [1/CM] 
-			> cChanges with wavelength Si 2000@940nm, 500@850nm, Ge: 6770@1375nm, 2442@1550nm
+			> Changes with wavelength Si 2000@940nm, 500@850nm, Ge: 6770@1375nm, 2442@1550nm
 		fill factor [ratio]
 		Epitaxial layer thickness [m]
 		[1/cm]*[cm/m]*[m] ==> [1]
 		'''
-		epi_thickness_m = epi_thickness_um * um
-		cm_m = 100 # [m/cm]
-		return (1.0 - np.exp(-silicon_absorption_cm * cm_m * epi_thickness_m)) # [ratio] 
+		_epi_thickness_m = epi_thickness_um * um
+		_cm_m = 100 # [m/cm]
+		return (1.0 - np.exp(-silicon_absorption_cm * _cm_m * _epi_thickness_m)) # [ratio] 
 
 	def quantum_efficiency(self, semiconductor='Si', wavelength_nm=850, epi_thickness_um=10):
 		f = interpolate.interp1d(self.Absorption_Coefficient[semiconductor].T[0], 
 		                         self.Absorption_Coefficient[semiconductor].T[1])
-		silicon_absorption_cm = f(wavelength_nm) # interpolation resulting spectrum with scipy.interpolate
-		QE = self.qe_by_absorption(silicon_absorption_cm, epi_thickness_um)
+		_silicon_absorption_cm = f(wavelength_nm) # interpolation resulting spectrum with scipy.interpolate
+		QE = self.qe_by_absorption(_silicon_absorption_cm, epi_thickness_um)
 		return QE
 
 	def solarSpectrum_W_m2_um(self):
@@ -117,38 +121,6 @@ class Photonic:
 		                         self.solar_spectrum_radiation_distribution.T[1])
 		wavelength_um = np.arange(np.min(self.solar_spectrum_radiation_distribution.T[0]), 
 		                          np.max(self.solar_spectrum_radiation_distribution.T[0]), 0.001)
-		spectrum = f(wavelength_um) # interpolation resulting spectrum with scipy.interpolate
-		return spectrum, wavelength_um
-
-	def solarSpectrum_W_m2_um_(self):
-		# NASA technical Memorandum1980
-		# https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19810016493.pdf
-		solar_spectrum_radiation_distribution = \
-			[0.3138, 11.31, 0.3205, 108.0, 0.3307, 204.7, 0.3409, 276.0, 0.3544, 337.1, 0.3679, 393.2, 
-			0.3713, 428.8, 0.3883, 469.7, 0.395, 551.1, 0.3984, 647.8, 0.4086, 790.2, 0.4086, 836.0, 
-			0.4221, 871.7, 0.4323, 866.7, 0.4391, 953.3, 0.4492, 1121, 0.4526, 1187, 0.4594, 1213, 0.4695, 
-			1228, 0.4797, 1264, 0.4865, 1238, 0.5, 1249, 0.5102, 1229, 0.5169, 1208, 0.5271, 1224, 0.5474, 
-			1183, 0.5542, 1178, 0.5609, 1168, 0.5711, 1183, 0.5813, 1189, 0.5948, 1179, 0.6151, 1164, 0.6422, 
-			1154, 0.6591, 1139, 0.6795, 1118, 0.6896, 1103, 0.6998, 1058, 0.7065, 1083, 0.7133, 1068, 0.7167, 
-			915.4, 0.7180, 1027, 0.7200, 981.5, 0.7203, 747.6, 0.7235, 864.6, 0.7269, 834.2, 0.7302, 869.8, 0.7336, 
-			946.1, 0.737, 976.6, 0.7506, 997.1, 0.754, 910.7, 0.7573, 854.8, 0.7607, 798.9, 0.7641, 687.1, 0.7675, 
-			839.6, 0.7709, 961.7, 0.7712, 921.0, 0.781, 956.7, 0.7946, 906.0, 0.8014, 880.7, 0.8110, 870.6, 0.8115, 
-			784.2, 0.8117, 845.2, 0.8135, 809.6, 0.8149, 758.8, 0.8151, 677.4, 0.8155, 713.0, 0.8160, 733.4, 0.8217, 
-			713.1, 0.8318, 718.3, 0.8352, 769.2, 0.8386, 799.7, 0.8488, 825.2, 0.8691, 805.1, 0.886, 779.8, 0.8928, 
-			713.8, 0.8962, 642.7, 0.8995, 581.7, 0.9063, 536.0, 0.9131, 490.3, 0.9165, 531.0, 0.9165, 592.0, 0.9233, 
-			536.1, 0.9266, 495.5, 0.9266, 429.4, 0.93, 368.4, 0.9334, 276.9, 0.9334, 190.5, 0.9402, 256.7, 0.9436, 282.1, 
-			0.9537, 251.7, 0.9571, 307.7, 0.9605, 378.9, 0.9639, 450.1, 0.9707, 501.0, 0.9774, 557.0, 0.9842, 618.1, 1.001, 
-			592.9, 1.025, 552.4, 1.059, 496.8, 1.093, 451.4, 1.099, 466.8, 1.103, 421.0, 1.106, 375.3, 1.109, 334.7, 1.113, 
-			268.6, 1.12, 172.0, 1.13, 111.1, 1.143, 146.9, 1.16, 253.8, 1.17, 320.0, 1.174, 350.6, 1.187, 360.9, 1.191, 391.4, 
-			1.218, 361.2, 1.235, 366.4, 1.262, 310.8, 1.279, 321.1, 1.292, 311.1, 1.309, 275.7, 1.319, 224.9, 1.33, 169.1, 1.35, 
-			113.4, 1.367, 57.61, 1.38, 6.898, 1.428, 32.8, 1.455, 68.67, 1.468, 63.73, 1.489, 109.7, 1.516, 171.0, 1.54, 227.2,
-			1.567, 217.3, 1.587, 212.4, 1.607, 202.4, 1.628, 202.6, 1.651, 187.6, 1.678, 167.6, 1.702, 162.7, 1.736, 152.9, 
-			1.773, 132.9, 1.797, 102.7, 1.831, 52.16, 1.858, 11.75, 1.946, 38.07, 1.99, 58.86, 2.014, 74.35, 2.051, 74.73, 
-			2.088, 75.11, 2.122, 75.46, 2.149, 70.65, 2.22, 71.37, 2.295, 72.13] # Solar Irradiance [W/m ** 2/µm]
-		solar_spectrum_radiation_distribution = np.reshape(solar_spectrum_radiation_distribution,[len(solar_spectrum_radiation_distribution)//2,2])    
-		f = interpolate.interp1d(solar_spectrum_radiation_distribution.T[0], solar_spectrum_radiation_distribution.T[1])
-		# np.savetxt('solar_spectrum_radiation_distribution.csv', solar_spectrum_radiation_distribution, delimiter=',')
-		wavelength_um = np.arange(np.min(solar_spectrum_radiation_distribution.T[0]), np.max(solar_spectrum_radiation_distribution.T[0]), 0.001)
 		spectrum = f(wavelength_um) # interpolation resulting spectrum with scipy.interpolate
 		return spectrum, wavelength_um
 
@@ -212,21 +184,21 @@ class Photonic:
 			op = self.op
 
 		if light_type == 'ir_pulse':		
-			integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s 
+			_integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s 
 		if light_type == 'solar':
 			### TODO: need to formulate integration time for solar
-			integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s 
+			_integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s 
 		
-		QE = self.quantum_efficiency(semiconductor=sensor.Semiconductor,
+		_QE = self.quantum_efficiency(semiconductor=sensor.Semiconductor,
 									 wavelength_nm=sensor.Wavelength,
 									 epi_thickness_um=sensor.epi_thick_um)
 		# print('>>>>>')
-		# print(sensor, '\nQE->', QE)
+		# print(sensor, '\nQE->', _QE)
 		# print('<<<<<')
-		energy_to_pe = hc / (light.WaveLength_nm * nm) # Conversion from energy [J] to number of photons
+		_energy_to_pe = hc / (light.WaveLength_nm * nm) # Conversion from energy [J] to number of photons
 		# PE on silicon from the scene during lighting time (pulse time)
-		pe_per_sec = siliconFlux * (sensor.PixelSize_m ** 2) * QE * sensor.FF / energy_to_pe  # [photoelectrons / sec] 
-		return pe_per_sec * integration_time_sec # [photoelectrons within integration time]
+		pe_per_sec = siliconFlux * ((sensor.PixSz_um * um) ** 2) * _QE * sensor.FF / _energy_to_pe  # [photoelectrons / sec] 
+		return pe_per_sec * _integration_time_sec # [photoelectrons within integration time]
 
 	def siliconFlux2(self, light=None, scene=None, lens=None, dist_vec=None):
 		return self.siliconFlux(wall_flux=self.wallFlux(dist_vec=dist_vec))
@@ -242,7 +214,7 @@ class Photonic:
 			op = self.op
 
 		### TODO: Find appropriate integration time foe dark signal
-		integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s
+		_integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s
 
 		signal = dict(
 			ir_pulse=self.photoelectron2(self, dist_vec=dist_vec),
@@ -252,9 +224,9 @@ class Photonic:
 		# print(signal)
 		noise = dict(
 			noise_photon_shot = (signal['ir_pulse'] + signal['solar']) ** 0.5,
-			dark_noise = (self.sensor.DarkSignal_e_s * integration_time_sec)**0.5,
-			readout_noise = self.sensor.ReadoutNoise_e,
-			kTC_noise = 1/e_minus * np.sqrt(k_b * T_kelvin * self.sensor.Cfd_farad) if not self.sensor.CDS else 0.0, 
+			dark_noise = (self.sensor.DkSig_e_s * _integration_time_sec) ** 0.5,
+			readout_noise = self.sensor.RdNoise_e,
+			kTC_noise = 1/e_minus * np.sqrt(k_b * T_kelvin * self.sensor.Cfd_fF * fF) if not self.sensor.CDS else 0.0, 
 						# 1/[coul]*sqrt([V][A][Sec][A][Sec]/[V]) == [1] 
 			quantization_noise = 0.0) ### TODO: quantizatio noise definition
 		SNR = signal['ir_pulse'] / (np.sqrt(
@@ -308,7 +280,6 @@ class Photonic:
 		self.pulse_y = y
 		self.pulse_t = t
 		return y, t
-
 
 	def conv_light_shutter(self, t_light=None, y_light=None, t_shutter=None, y_shutter=None, time_interval=None):
 		self.time_interval = time_interval
