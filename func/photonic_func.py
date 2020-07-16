@@ -331,8 +331,21 @@ class Photonic:
 				for j, k in enumerate(sh_assign):
 					if j >= shutter_per_cycle and k == i:
 						shutters['sh_comb'+str(i)] = shutters['sh_comb'+str(i)] + shutters['sh'+str(j)]
-	
 		return shutters
+
+	def get_modulation_phase(self, shutters, shutter_per_cycle, initial_phase = -3.0):
+		# Initialize phase components
+		XX = np.zeros(shutters['sh0'].shape)
+		YY = np.zeros(shutters['sh0'].shape)
+		
+		# Extract phase components from the phasors
+		for i in range(shutter_per_cycle):
+			XX = shutters['sh_comb'+str(i)] * np.cos(2*np.pi*i/shutter_per_cycle + initial_phase) + XX
+			YY = shutters['sh_comb'+str(i)] * np.sin(2*np.pi*i/shutter_per_cycle + initial_phase) + YY
+
+			# Unwrap the phase
+		phase = np.arctan2(XX, YY)
+		return phase
 
 
 
