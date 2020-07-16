@@ -4,20 +4,19 @@ import sys, os
 from scipy import interpolate
 import scipy.signal as sp_signal
 
-nm = 1e-9
-um = 1e-6
-fF = 1e-15
 c = 2.99792458e8  # [m/s] Speed of light
 hc = 1.987820871E-025  # [J * m / photon] Energy of photon with wavelength m
 efficacy = 683 # [lumen/watt @ 550nm]
 k_b = 1.3806488e-23 # [J/K] boltzman constant
 h   = 6.62606957e-34 # [J*sec] Plank constant
-nm = 1e-9 # [m]
-cm = 1e-2 # [m]
 e_minus =1.60217662e-19  # [Coulomb]
 T_kelvin = 300
 maximum_amb_light_lux = 120000 # [lux]
-
+nm = 1e-9 # [m]
+cm = 1e-2 # [m]
+um = 1e-6 # [m]
+nsec = 1e-9 # [sec]
+fF = 1e-15 # [F]
 
 def PlankLawBlackBodyRad(T, wavelength):
   # Calculates black body radiation according Plank Law. T is the black body
@@ -291,6 +290,49 @@ class Photonic:
 		y = y / y_light.sum() # Normalize convolution to the integrated light: y=1 if the entire illumination pulse is within the shutter
 		t = np.linspace(0, len(y) * self.time_interval, len(y))
 		return y, t
+	
+	def generate_tof_shutters(self, op, freq, shutter_per_cycle, total_shutters):
+		sh_vector_length = 100
+		cycle_time = 1 / freq
+
+		# Get light + shutter pulse data
+		light_rise = op.light_rise_nsec * nsec
+		light_fall = op.light_fall_nsec * nsec
+		light_width = op.light_width_nsec * nsec
+		shutter_rise = op.shutter_rise_nsec * nsec
+		shutter_fall = op.shutter_fall_nsec * nsec
+		shutter_width = op.shutter_width_nsec * nsec
+		shutter_delay = op.shutter_delay_nsec * nsec
+
+		# Generate light pulse, shutter pulse, and a convolution
+		y1, t1 = self.generate_pulse(rise=light_rise, fall=light_fall, width=light_width, smooth=True)
+		y2, t2 = self.generate_pulse(delay=shutter_delay, rise=shutter_rise, fall=shutter_fall, width=shutter_width, smooth=True)
+		y3, t3 = self.conv_light_shutter(t_light=t1, y_light=y1, t_shutter=t2, y_shutter=y2)
+
+		# Generates the raw shutters by applying the sh_delay (the will not overlap in between)
+		shutters = dict()
+		for i in range(total_shutters):
+			sh_delay = i * cycle_time / shutter_per_cycle
+			shutters['sh_'+str(i)] = np.stack((t3 + sh_delay, y3)).T
+
+		# New time shift axis
+		shutters['dt'] = np.linspace(shutters['sh_0'][:,0].min(), shutters['sh_'+str(total_shutters - 1)][:,0].max(), sh_vector_length)
+
+		# Interpolate the raw shutters into the new time shift axis
+		for i in range(total_shutters):
+			shutters['sh'+str(i)]= np.interp(shutters['dt'], shutters['sh_'+str(i)][:,0], shutters['sh_'+str(i)][:,1])
+			del shutters['sh_'+str(i)] # Delete the raw shutters
+		
+		sh_assign = list(np.array(list(range(total_shutters))) % shutter_per_cycle)
+
+		for i  in range(shutter_per_cycle):
+			shutters['sh_comb'+str(i)] = shutters['sh'+str(i)]
+			if total_shutters > shutter_per_cycle:
+				for j, k in enumerate(sh_assign):
+					if j >= shutter_per_cycle and k == i:
+						shutters['sh_comb'+str(i)] = shutters['sh_comb'+str(i)] + shutters['sh'+str(j)]
+	
+		return shutters
 
 
 
@@ -362,39 +404,48 @@ if __name__ == '__main__':
 	print('SNR=', SNR)
 
 	
+	# photonic = Photonic(config='Cfg3')
+	# rise = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'light_rise_nsec']
+	# fall = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'light_fall_nsec']
+	# width = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'light_width_nsec']
+	# y1, t1 = photonic.generate_pulse(rise=rise, fall=fall, width=width, smooth=False)
+
+
+	# rise = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_rise_nsec']
+	# fall = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_fall_nsec']
+	# width = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_width_nsec']
+	# delay = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_delay_nsec']
+	# delay = 14e-9
+	# width=5e-9
+	# y2, t2 = photonic.generate_pulse(delay=delay, rise=rise, fall=fall, width=width, smooth=False)
+	# y3, t3 = photonic.conv_light_shutter(t_light=t1, y_light=y1, t_shutter=t2, y_shutter=y2)
+
+	# import matplotlib.pyplot as plt
+	# fig, ax = plt.subplots(3,1, sharex=True)
+	# ax[0].plot(t1,y1, label='Light')
+	# ax[0].set_ylabel('Light')
+	# ax[0].grid()
+	# ax[1].plot(t2,y2, label='Shutter')
+	# ax[1].set_ylabel('Shutter')
+	# ax[1].grid()
+	# ax[2].plot(t3, y3, label='Convolution')
+	# ax[2].set_ylabel('Convolution')
+	# ax[2].grid()
+	# ax[2].set_ylim(0,1)
+	# ax[2].text(0,0.1,'Convolution units are fraction of the integrated light')
+	# plt.show()
+
 	photonic = Photonic(config='Cfg3')
-	rise = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'light_rise_sec']
-	fall = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'light_fall_sec']
-	width = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'light_width_sec']
-	y1, t1 = photonic.generate_pulse(rise=rise, fall=fall, width=width, smooth=False)
+	freq = 60e6
+	shutter_per_cycle = 3
+	total_shutters = shutter_per_cycle + 2
 
+	shutters = photonic.generate_tof_shutters(op=photonic.op, freq=freq, 
+									shutter_per_cycle=shutter_per_cycle, 
+									total_shutters=total_shutters)                                                                           
+	print('shutters: ',shutters['dt'].shape, shutters['sh0'].shape)
 
-	rise = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_rise_sec']
-	fall = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_fall_sec']
-	width = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_width_sec']
-	delay = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_delay_sec']
-	delay = 14e-9
-	width=5e-9
-	y2, t2 = photonic.generate_pulse(delay=delay, rise=rise, fall=fall, width=width, smooth=False)
-	y3, t3 = photonic.conv_light_shutter(t_light=t1, y_light=y1, t_shutter=t2, y_shutter=y2)
-
-	import matplotlib.pyplot as plt
-	fig, ax = plt.subplots(3,1, sharex=True)
-	ax[0].plot(t1,y1, label='Light')
-	ax[0].set_ylabel('Light')
-	ax[0].grid()
-	ax[1].plot(t2,y2, label='Shutter')
-	ax[1].set_ylabel('Shutter')
-	ax[1].grid()
-	ax[2].plot(t3, y3, label='Convolution')
-	ax[2].set_ylabel('Convolution')
-	ax[2].grid()
-	ax[2].set_ylim(0,1)
-	ax[2].text(0,0.1,'Convolution units are fraction of the integrated light')
-
-	plt.show()
 	
-
 	
 	
 
