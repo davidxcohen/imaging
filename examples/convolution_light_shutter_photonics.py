@@ -3,11 +3,8 @@ import os, sys
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(CURRENT_DIR+'/..'+'/func'))
-
 from func.photonic_func import Photonic
 
-# Plotly versions keep changing fast
-# Plotly version 4.0.0 (pip install plotly==4.0.0)
 from plotly.offline import init_notebook_mode, iplot 
 import plotly.graph_objs as go
 # init_notebook_mode(connected=True)  # for Jupyter Lab notebook
@@ -44,26 +41,24 @@ trace3 = go.Scatter(x=[-13e-9],
 
 data = [trace0, trace1, trace2, trace3]
 
-layout = {'title': 'Light & Shutter pulses + its Convolution: both square and equal',
-          'xaxis': {'title': 'time, time delay [sec]',
-                    'type': 'linear'},  # Select 'log' or 'linear'
-          'yaxis': {'title': 'Signal',
-                    'type': 'linear'},  # Select 'log' or 'linear'
-          'template': 'plotly_dark'}
+layout = dict(title='Light & Shutter pulses + its Convolution: both square and equal',
+              xaxis=dict(title='time, time delay [sec]', type='linear'),  # Select 'log' or 'linear'
+              yaxis=dict(title='Signal',type='linear'),  # Select 'log' or 'linear'
+              template='plotly_dark')
 
-iplot({'data': data, 'layout': layout})
+iplot(dict(data=data, layout=layout))
 
 # Light & Shutter pulses + its Convolution: square shutter triangle light
-rise = 1e-8
-fall = 1e-8
+rise = 0.3e-8
+fall = 0.3e-8
 width = 1e-8
-y1, t1 = photonic.generate_pulse(rise=rise, fall=fall, width=width, smooth=False)
+y1, t1 = photonic.generate_pulse(rise=rise, fall=fall, width=width, smooth=True)
 
-rise = 1e-14
-fall = 1e-14
+rise = 1e-9
+fall = 1e-9
 width = 0.8e-8
 delay = 3e-9
-y2, t2 = photonic.generate_pulse(delay=delay, rise=rise, fall=fall, width=width, smooth=False)
+y2, t2 = photonic.generate_pulse(delay=delay, rise=rise, fall=fall, width=width, smooth=True)
 
 y3, t3 = photonic.conv_light_shutter(t_light=t1, y_light=y1, t_shutter=t2, y_shutter=y2)
 
@@ -83,11 +78,9 @@ trace3 = go.Scatter(x=[-10e-9],
 
 data = [trace0, trace1, trace2, trace3]
 
-layout = {'title': 'Light & Shutter pulses + its Convolution: square shutter triangle light',
-          'xaxis': {'title': 'time, time delay [sec]',
-                    'type': 'linear'},  # Select 'log' or 'linear'
-          'yaxis': {'title': 'Signal',
-                    'type': 'linear'},  # Select 'log' or 'linear'
-          'template': 'plotly_dark'}
+layout = dict(title='Light & Shutter pulses + its Convolution: both square and equal',
+              xaxis=dict(title='time, time delay [sec]', type='linear'),  # Select 'log' or 'linear'
+              yaxis=dict(title='Signal',type='linear'),  # Select 'log' or 'linear'
+              template='plotly_dark')
 
 iplot({'data': data, 'layout': layout})

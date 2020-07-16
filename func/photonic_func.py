@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
 import sys, os
-from scipy import signal, interpolate
+from scipy import interpolate
+import scipy.signal as sp_signal
 
 nm = 1e-9
 um = 1e-6
@@ -213,7 +214,7 @@ class Photonic:
 		if op is None:
 			op = self.op
 
-		### TODO: Find appropriate integration time foe dark signal
+		### TODO: Find appropriate integration time for dark signal
 		_integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s
 
 		signal = dict(
@@ -255,7 +256,7 @@ class Photonic:
 
 		if mode == 'charge_discharge':
 			x_rise = np.arange(0, width, self.time_interval)
-			x_fall = np.arange(0, fall * 10, fall) # Discharge takes longer to become zero
+			x_fall = np.arange(0, fall * 5, self.time_interval) # Discharge takes longer to become zero
 			y_up = (1 - np.exp(-x_rise / rise))
 			y_max = y_up.max()
 			y_inf = (1 - np.exp(-(10. *rise) / rise)) # =1 @ infinity
@@ -267,7 +268,7 @@ class Photonic:
 
 		# Smooth curves
 		if smooth:
-			f = signal.hamming(15)
+			f = sp_signal.hamming(15) # 
 			y = np.convolve(f, y, mode='same')
 			y = y / y.max()
 		y = y * y_max / y_inf
@@ -351,20 +352,6 @@ if __name__ == '__main__':
 	    photonic.siliconFlux(wall_flux=photonic.wallFlux()),
 	    photonic.photoelectron(siliconFlux=photonic.siliconFlux(wall_flux=photonic.wallFlux())))) #,'\n',photonic.photoelectron())	
 
-	rise = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'light_rise_sec']
-	fall = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'light_fall_sec']
-	width = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'light_width_sec']
-	y1, t1 = photonic.generate_pulse(rise=rise, fall=fall, width=width, smooth=True)
-
-
-	rise = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_rise_sec']
-	fall = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_fall_sec']
-	width = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_width_sec']
-	delay = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_delay_sec']
-	delay = 14e-9
-	y2, t2 = photonic.generate_pulse(delay=delay, rise=rise, fall=fall, width=width, smooth=True)
-
-	y3, t3 = photonic.conv_light_shutter(t_light=t1, y_light=y1, t_shutter=t2, y_shutter=y2)
 	
 	photonic = Photonic(config='fake_tof_day_1375')
 	print(f'Solar= {photonic.wallFlux(light_type="solar", dist_vec=np.array([1,2]))}')
@@ -375,11 +362,38 @@ if __name__ == '__main__':
 	print('SNR=', SNR)
 
 	
+	photonic = Photonic(config='Cfg3')
+	rise = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'light_rise_sec']
+	fall = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'light_fall_sec']
+	width = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'light_width_sec']
+	y1, t1 = photonic.generate_pulse(rise=rise, fall=fall, width=width, smooth=False)
+
+
+	rise = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_rise_sec']
+	fall = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_fall_sec']
+	width = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_width_sec']
+	delay = photonic.op_.loc[photonic.config_.loc[photonic.config,'Op'],'shutter_delay_sec']
+	delay = 14e-9
+	width=5e-9
+	y2, t2 = photonic.generate_pulse(delay=delay, rise=rise, fall=fall, width=width, smooth=False)
+	y3, t3 = photonic.conv_light_shutter(t_light=t1, y_light=y1, t_shutter=t2, y_shutter=y2)
+
 	import matplotlib.pyplot as plt
-	plt.plot(t1,y1)
-	plt.plot(t2,y2)
-	plt.plot(t3, y3)
+	fig, ax = plt.subplots(3,1, sharex=True)
+	ax[0].plot(t1,y1, label='Light')
+	ax[0].set_ylabel('Light')
+	ax[0].grid()
+	ax[1].plot(t2,y2, label='Shutter')
+	ax[1].set_ylabel('Shutter')
+	ax[1].grid()
+	ax[2].plot(t3, y3, label='Convolution')
+	ax[2].set_ylabel('Convolution')
+	ax[2].grid()
+	ax[2].set_ylim(0,1)
+	ax[2].text(0,0.1,'Convolution units are fraction of the integrated light')
+
 	plt.show()
+	
 
 	
 	
