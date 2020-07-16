@@ -17,9 +17,9 @@ import plotly.graph_objs as go
 # Plotly version 4.0.0 (pip install plotly==4.0.0)
 # init_notebook_mode(connected=True)  # for Jupyter Lab notebook
 
-photonic = Photonic(config='Cfg2')
+photonic = Photonic(config='fake_tof_night_850')
 
-dist_vec = np.array([1, 2, 5, 10, 20, 50, 100])
+dist_vec = np.array([1, 2, 5, 10, 20, 50, 100, 200])
 trace0 = go.Scatter(x=dist_vec,
                     # Select 'lines', 'markers' or 'lines+markers'
                     y=1000 * photonic.wallFlux(dist_vec=dist_vec), mode='lines+markers',
