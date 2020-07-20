@@ -354,6 +354,7 @@ class Photonic:
 		
 		_light_duty_cycle = op.integTime_s / (1 / op.frame_rate)
 		power = dict()
+		power['optical'] = light.PeakPower_W * _light_duty_cycle * light.Number_units
 		power['light'] = light.Voltage_V * light.Current_A * _light_duty_cycle * light.Number_units
 		power['sensor'] = sensor.Power_nJ_pix * 1e-9 * sensor.Res_H * sensor.Res_H * op.frame_rate * op.N_subframes 
 		power['heat_light'] = power['light'] * (light.Voltage_V * light.Current_A - light.PeakPower_W) / light.PeakPower_W
