@@ -124,9 +124,6 @@ class Photonic:
 		spectrum = f(wavelength_um) # interpolation resulting spectrum with scipy.interpolate
 		return spectrum, wavelength_um
 
-	def light_heat_dissipation(self, light=None):
-		return light.Voltage_V * light.Current_A - light.PeakPower_W
-
 	def light_conversion_efficiency(self, light=None):
 		return light.PeakPower_W / (light.Voltage_V * light.Current_A)
 
@@ -183,11 +180,11 @@ class Photonic:
 		if op is None:
 			op = self.op
 
-		if light_type == 'ir_pulse':		
-			_integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s 
-		if light_type == 'solar':
-			### TODO: need to formulate integration time for solar
-			_integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s 
+		# if light_type == 'ir_pulse':		
+		# 	_integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s 
+		# if light_type == 'solar':
+		# 	### TODO: need to formulate integration time for solar
+		# 	_integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s 
 		
 		_QE = self.quantum_efficiency(semiconductor=sensor.Semiconductor,
 									 wavelength_nm=sensor.Wavelength,
@@ -198,7 +195,7 @@ class Photonic:
 		_energy_to_pe = hc / (light.WaveLength_nm * nm) # Conversion from energy [J] to number of photons
 		# PE on silicon from the scene during lighting time (pulse time)
 		pe_per_sec = siliconFlux * ((sensor.PixSz_um * um) ** 2) * _QE * sensor.FF / _energy_to_pe  # [photoelectrons / sec] 
-		return pe_per_sec * _integration_time_sec # [photoelectrons within integration time]
+		return pe_per_sec * op.integTime_s # [photoelectrons within integration time]
 
 	def siliconFlux2(self, light=None, scene=None, lens=None, dist_vec=None):
 		return self.siliconFlux(wall_flux=self.wallFlux(dist_vec=dist_vec))
@@ -213,8 +210,8 @@ class Photonic:
 		if op is None:
 			op = self.op
 
-		### TODO: Find appropriate integration time for dark signal
-		_integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s
+		# ### TODO: Find appropriate integration time for dark signal
+		# _integration_time_sec = op.InBurstDutyCycle * op.BurstTime_s
 
 		signal = dict(
 			ir_pulse=self.photoelectron2(self, dist_vec=dist_vec),
@@ -224,9 +221,9 @@ class Photonic:
 		# print(signal)
 		noise = dict(
 			noise_photon_shot = (signal['ir_pulse'] + signal['solar']) ** 0.5,
-			dark_noise = (self.sensor.DkSig_e_s * _integration_time_sec) ** 0.5,
-			readout_noise = self.sensor.RdNoise_e,
-			kTC_noise = 1/e_minus * np.sqrt(k_b * T_kelvin * self.sensor.Cfd_fF * fF) if not self.sensor.CDS else 0.0, 
+			dark_noise = (sensor.DkSig_e_s * op.integTime_s) ** 0.5,
+			readout_noise = sensor.RdNoise_e,
+			kTC_noise = 1/e_minus * np.sqrt(k_b * T_kelvin * sensor.Cfd_fF * fF) if not self.sensor.CDS else 0.0, 
 						# 1/[coul]*sqrt([V][A][Sec][A][Sec]/[V]) == [1] 
 			quantization_noise = 0.0) ### TODO: quantizatio noise definition
 		SNR = signal['ir_pulse'] / (np.sqrt(
@@ -347,6 +344,21 @@ class Photonic:
 		phase = np.arctan2(XX, YY)
 		return phase
 
+	def power_consumption(self, light=None, op=None, sensor=None):
+		if light is None:
+			light = self.light
+		if op is None:
+			op = self.op
+		if sensor is None:
+			sensor = self.sensor
+		
+		_light_duty_cycle = op.integTime_s / (1 / op.frame_rate)
+		power = dict()
+		power['light'] = light.Voltage_V * light.Current_A * _light_duty_cycle * light.Number_units
+		power['sensor'] = sensor.Power_nJ_pix * 1e-9 * sensor.Res_H * sensor.Res_H * op.frame_rate * op.N_subframes 
+		power['heat_light'] = power['light'] * (light.Voltage_V * light.Current_A - light.PeakPower_W) / light.PeakPower_W
+		return power
+
 
 
 if __name__ == '__main__':
@@ -458,7 +470,13 @@ if __name__ == '__main__':
 									total_shutters=total_shutters)                                                                           
 	print('shutters: ',shutters['dt'].shape, shutters['sh0'].shape)
 
-	
+	power = photonic.power_consumption()
+	P_light = power['light'] * 1000 # [mW]
+	P_sensor = power['sensor'] * 1000 # [mW]
+	P_heat = power['heat_light'] * 1000 + P_sensor
+	P_total = P_light + P_sensor  
+	print(f'Light Power Consumption is {P_light:2.1f} mW\nSensor Power Consumption is {P_sensor:2.1f} mW\nTotal Power Consumption is {P_total:2.1f} mW')
+	print(f'Total Heat Dissipation is {P_heat:2.1f} mW')
 	
 	
 
