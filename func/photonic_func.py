@@ -1,8 +1,6 @@
 import numpy as np
 import pandas as pd
 import sys, os
-from scipy import interpolate
-import scipy.signal as sp_signal
 
 c = 2.99792458e8  # [m/s] Speed of light
 hc = 1.987820871E-025  # [J * m / photon] Energy of photon with wavelength m
@@ -46,19 +44,19 @@ class Photonic:
 		if config is None:  
 			self.config = 'Cfg1'
 		
-		CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-		_data_file = CURRENT_DIR+'/../data/SolarRadiationSpectrum/solar_spectrum_radiation_distribution.csv'
+		FUNC_DIR = os.path.split(__file__)[0]
+		_data_file = os.path.join(FUNC_DIR,'..','data','SolarRadiationSpectrum','solar_spectrum_radiation_distribution.csv')
 		tmp = np.genfromtxt(_data_file, delimiter=',')
 		self.solar_spectrum_radiation_distribution = np.vstack(tmp[1:])
 
 		self.Absorption_Coefficient = dict()
 		for sc in ['Si', 'Ge']:
-			_data_file = CURRENT_DIR+'/../data/AbsorptionData/'+sc+'_Absorption_Coefficient_cm-1.csv'
+			_data_file = FUNC_DIR+'/../data/AbsorptionData/'+sc+'_Absorption_Coefficient_cm-1.csv'
 			tmp = np.genfromtxt(_data_file, delimiter=',')
 			self.Absorption_Coefficient[sc] = np.vstack(tmp[1:])
 
 		# Read excel table having the following sheets: 'Light', 'Sensor', 'Scene', 'Lens', 'Op', 'Config'
-		_data_file = CURRENT_DIR+'/../data/photonic_simul_data.xlsx'
+		_data_file = os.path.join(FUNC_DIR,'..','data','photonic_simul_data.xlsx')
 		self.light_ = pd.read_excel(_data_file,sheet_name='Light',header=1,index_col='Name')
 		self.sensor_ = pd.read_excel(_data_file,sheet_name='Sensor',header=1,index_col='Name')
 		self.scene_ = pd.read_excel(_data_file,sheet_name='Scene',header=1,index_col='Name')
@@ -107,9 +105,8 @@ class Photonic:
 		return (1.0 - np.exp(-silicon_absorption_cm * _cm_m * _epi_thickness_m)) # [ratio] 
 
 	def quantum_efficiency(self, semiconductor='Si', wavelength_nm=850, epi_thickness_um=10):
-		f = interpolate.interp1d(self.Absorption_Coefficient[semiconductor].T[0], 
-		                         self.Absorption_Coefficient[semiconductor].T[1])
-		_silicon_absorption_cm = f(wavelength_nm) # interpolation resulting spectrum with scipy.interpolate
+		_silicon_absorption_cm = np.interp(wavelength_nm, 	self.Absorption_Coefficient[semiconductor].T[0], 
+		                         							self.Absorption_Coefficient[semiconductor].T[1])
 		QE = self.qe_by_absorption(_silicon_absorption_cm, epi_thickness_um)
 		return QE
 
@@ -117,11 +114,10 @@ class Photonic:
 		# NASA technical Memorandum1980
 		# Solar Irradiance [W/m^2/µm]
 		# https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19810016493.pdf
-		f = interpolate.interp1d(self.solar_spectrum_radiation_distribution.T[0], 
-		                         self.solar_spectrum_radiation_distribution.T[1])
 		wavelength_um = np.arange(np.min(self.solar_spectrum_radiation_distribution.T[0]), 
 		                          np.max(self.solar_spectrum_radiation_distribution.T[0]), 0.001)
-		spectrum = f(wavelength_um) # interpolation resulting spectrum with scipy.interpolate
+		spectrum = np.interp(wavelength_um, self.solar_spectrum_radiation_distribution.T[0], 
+		                         			self.solar_spectrum_radiation_distribution.T[1])
 		return spectrum, wavelength_um
 
 	def light_conversion_efficiency(self, light=None):
@@ -147,16 +143,14 @@ class Photonic:
 				(np.radians(light.Hfov_deg) * np.radians(light.Vfov_deg) * dist_m ** 2)  # [W/m^2]
 		if light_type == 'solar':
 			y, x = self.solarSpectrum_W_m2_um()
-			### TODO: Consider replace interpolation by Numpy.Interp
-			f = interpolate.interp1d(x, y)
 			amb = scene.AmbientLight_lux / maximum_amb_light_lux
 			if len(dist_m.shape):
 				### TODO: This required due to bug in the scipy.interpolation
-				solar_flux_W_m2_um = amb * f([light.WaveLength_nm / 1000])# solar flux input in [um]
+				solar_flux_W_m2_um = amb * np.interp([light.WaveLength_nm / 1000], x, y) # solar flux input in [um]
 				solar_flux_W_m2_nm_vec = np.array(dist_m.shape[0] * list(solar_flux_W_m2_um)) \
 					* lens.BP_filter_width_nm * 0.001 # [W/m^2/um][nm][nm/um] ==> [W/m^2] 
 			else:
-				solar_flux_W_m2_um = amb * f(light.WaveLength_nm / 1000) # solar flux input in [um]
+				solar_flux_W_m2_um = amb * np.interp(light.WaveLength_nm / 1000, x, y) # solar flux input in [um]
 				solar_flux_W_m2_nm_vec = solar_flux_W_m2_um * lens.BP_filter_width_nm * 0.001 # [W/m^2/um][nm][nm/um] ==> [W/m^2] 
 
 			flux = solar_flux_W_m2_nm_vec 
@@ -264,7 +258,7 @@ class Photonic:
 
 		# Smooth curves
 		if smooth:
-			f = sp_signal.hamming(15) # 
+			f = np.hamming(15) 
 			y = np.convolve(f, y, mode='same')
 			y = y / y.max()
 		y = y * y_max / y_inf
@@ -363,8 +357,8 @@ class Photonic:
 
 
 if __name__ == '__main__':
-	CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-	config = pd.read_excel(CURRENT_DIR+'/../data/photonic_simul_data.xlsx',sheet_name='Config',header=1,index_col='Name').loc['Cfg1']
+	FUNC_DIR = os.path.split(__file__)[0]
+	config = pd.read_excel(os.path.join(FUNC_DIR,'..','data','photonic_simul_data.xlsx'),sheet_name='Config',header=1,index_col='Name').loc['Cfg1']
 	print(' ## main ## \n', config, '\n =====  \n')
 
 
