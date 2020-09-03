@@ -2,13 +2,10 @@ import numpy as np
 import pandas as pd
 # import pathlib
 import sys, os
-<<<<<<< HEAD
 # os.environ['PATH'] = "path-to-openslide-bin" + ";" + os.environ['PATH']
 # from scipy.interpolate import interp1d
 # from scipy import interpolate
 # import scipy.signal as sp_signal
-=======
->>>>>>> 504ccc0374c58b60362a1f70de0cfc2fd2333b3e
 
 c = 2.99792458e8  # [m/s] Speed of light
 hc = 1.987820871E-025  # [J * m / photon] Energy of photon with wavelength m
@@ -46,8 +43,9 @@ def PlankLawBlackBodyRad(T, wavelength):
   return B * 1e-9 # [W/sr/m^2/nm] Spectral Radiance
 
 class Photonic:
-	def __init__(self, config=None, data_file_input=None):
+	def __init__(self, config=None, input_file=None):
 		self.config = config
+		self.input_file = input_file
 		#! Unclear why the following condition is required and not in function init
 		if config is None:  
 			self.config = 'Cfg1'
@@ -70,10 +68,10 @@ class Photonic:
 
 		# Read excel table having the following sheets: 'Light', 'Sensor', 'Scene', 'Lens', 'Op', 'Config'
 		# _data_file = CURRENT_DIR+'/../data/photonic_simul_data.xlsx'
-		if data_file_input is None:
+		if input_file is None:
 			_data_file = os.path.join(FUNC_DIR,'..','data','photonic_simul_data.xlsx')
 		else:
-			_data_file = input_data_file
+			_data_file = self.input_file
 		
 		self.light_ = pd.read_excel(_data_file,sheet_name='Light',header=1,index_col='Name')
 		self.sensor_ = pd.read_excel(_data_file,sheet_name='Sensor',header=1,index_col='Name')
@@ -506,5 +504,6 @@ if __name__ == '__main__':
 	print(f'Light Power Consumption is {P_light:2.1f} mW\nSensor Power Consumption is {P_sensor:2.1f} mW\nTotal Power Consumption is {P_total:2.1f} mW')
 	print(f'Total Heat Dissipation is {P_heat:2.1f} mW')
 	
-	
+	filename = r'C:\Users\david.cohen\repo\imaging\data\photonic_simul_data.xlsx'
+	photonic = Photonic(input_file=filename)
 
