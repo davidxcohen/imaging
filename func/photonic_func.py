@@ -2,10 +2,13 @@ import numpy as np
 import pandas as pd
 # import pathlib
 import sys, os
+<<<<<<< HEAD
 # os.environ['PATH'] = "path-to-openslide-bin" + ";" + os.environ['PATH']
 # from scipy.interpolate import interp1d
 # from scipy import interpolate
 # import scipy.signal as sp_signal
+=======
+>>>>>>> 504ccc0374c58b60362a1f70de0cfc2fd2333b3e
 
 c = 2.99792458e8  # [m/s] Speed of light
 hc = 1.987820871E-025  # [J * m / photon] Energy of photon with wavelength m
