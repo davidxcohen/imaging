@@ -55,7 +55,7 @@ class Photonic:
 		FUNC_DIR = os.path.split(__file__)[0]
 		# _data_file = CURRENT_DIR+'/../data/SolarRadiationSpectrum/solar_spectrum_radiation_distribution.csv'
 		_data_file = os.path.join(FUNC_DIR,'..','data','SolarRadiationSpectrum','solar_spectrum_radiation_distribution.csv')  
-		print(CURRENT_DIR, '\n', _data_file, '\n', os.path.split(__file__)[0])
+		# print(CURRENT_DIR, '\n', _data_file, '\n', os.path.split(__file__)[0])
 		tmp = np.genfromtxt(_data_file, delimiter=',')
 		self.solar_spectrum_radiation_distribution = np.vstack(tmp[1:])
 
@@ -503,7 +503,8 @@ if __name__ == '__main__':
 	P_total = P_light + P_sensor  
 	print(f'Light Power Consumption is {P_light:2.1f} mW\nSensor Power Consumption is {P_sensor:2.1f} mW\nTotal Power Consumption is {P_total:2.1f} mW')
 	print(f'Total Heat Dissipation is {P_heat:2.1f} mW')
-	
-	filename = r'C:\Users\david.cohen\repo\imaging\data\photonic_simul_data.xlsx'
+
+	filename = '../sys_arch/data/photonic_simul/photonic_simul_data.xlsx'
+	# filename = r'C:\Users\david.cohen\repo\imaging\data\photonic_simul_data.xlsx'
 	photonic = Photonic(input_file=filename)
 
